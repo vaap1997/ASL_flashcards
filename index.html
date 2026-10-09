@@ -27,8 +27,7 @@ h1{font-size:1.2rem;font-weight:800;margin:0 0 4px}
 .video{width:100%;aspect-ratio:16/9;border:0;border-radius:12px;background:#000}
 .card.back .label{font-weight:800;font-size:1.3rem;margin:0 0 12px}
 #vbox{width:100%;display:flex;justify-content:center}
-.watch{display:block;width:100%;text-align:center;background:var(--accent);color:#14213D;font-weight:800;font-size:1.4rem;text-decoration:none;padding:48px 16px;border-radius:16px}
-.here{flex:none;margin-top:14px;min-height:40px;padding:8px 14px;font-weight:500;font-size:.9rem;border-width:1px}
+.watch{display:block;width:100%;text-align:center;background:var(--accent);color:#14213D;font-weight:800;font-size:1.05rem;text-decoration:none;padding:14px 16px;border-radius:14px;margin-top:14px}
 .row{display:flex;gap:12px;margin-top:16px;width:min(100%,560px)}
 button{font:inherit;font-weight:800;border-radius:14px;padding:16px;border:2px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer;flex:1;min-height:56px}
 button.go{background:var(--accent);color:#14213D;border-color:var(--accent)}
@@ -122,15 +121,11 @@ function draw() {
   } else {
     card.className = 'card back';
     const w = `https://www.youtube.com/watch?v=${c.id}` + (c.start ? `&t=${c.start}s` : '');
-    card.innerHTML = `<p class="label">${esc(c.word)}</p><div id="vbox"><a class="watch" href="${w}" target="_blank" rel="noopener">Watch the sign</a></div><button class="here" id="here">Try playing it here</button>`;
+    card.innerHTML = `<p class="label">${esc(c.word)}</p><div id="vbox"><iframe class="video" src="${embed(c)}" referrerpolicy="strict-origin-when-cross-origin" title="Sign for ${esc(c.word)}" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div><a class="watch" href="${w}" target="_blank" rel="noopener">See the video</a>`;
   }
 }
 
 function flip(e) {
-  if (e && e.target.closest && e.target.closest('#here')) {
-    $('vbox').innerHTML = `<iframe class="video" src="${embed(deck[queue[0]])}" referrerpolicy="strict-origin-when-cross-origin" title="Sign video" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
-    $('here').remove(); return;
-  }
   if (busy || !queue.length || (e && e.target.closest && e.target.closest('a,iframe,button'))) return;
   busy = true;
   card.style.transform = 'rotateY(90deg)';
