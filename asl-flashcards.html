@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>ASL Flashcards</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;800&display=swap">
+<style>
+:root{--bg:#E9EEF1;--ink:#14213D;--front:#1d3170;--paper:#fff;--accent:#D8F25C;--muted:#5b6678;--line:#c9d3da;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1420;--ink:#e8eef6;--paper:#1a2538;--muted:#9aa7bb;--line:#2c3a52}}
+:root[data-theme="dark"]{--bg:#0d1420;--ink:#e8eef6;--paper:#1a2538;--muted:#9aa7bb;--line:#2c3a52}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;padding:20px 16px 40px}
+h1{font-size:1.2rem;font-weight:800;margin:0 0 4px}
+.stats{color:var(--muted);margin:0 0 18px;font-size:.95rem}
+.stage{perspective:1200px;width:min(100%,560px)}
+.card{min-height:340px;border-radius:22px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;
+  transition:transform .16s ease-in;user-select:none;-webkit-tap-highlight-color:transparent;border:2px solid var(--line)}
+.card.front{background:var(--front);color:#fff;border-color:var(--front)}
+.card.back{background:var(--paper);color:var(--ink)}
+.card:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.word{font-size:clamp(2.4rem,11vw,4.2rem);font-weight:800;text-align:center;line-height:1.05;overflow-wrap:anywhere}
+.hint{margin:16px 0 0;opacity:.7;font-size:.95rem}
+.video{width:100%;aspect-ratio:16/9;border:0;border-radius:12px;background:#000}
+.card.back .label{font-weight:800;font-size:1.3rem;margin:0 0 12px}
+#vbox{width:100%;display:flex;justify-content:center}
+:root{--link:#15803d}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--link:#4ade80}}
+:root[data-theme="dark"]{--link:#4ade80}
+.card.back a.watch{display:inline;background:none;color:var(--link);font-weight:500;font-size:1rem;text-decoration:none;padding:0;margin-top:14px;border-radius:0}
+.card.back a.watch:hover{text-decoration:underline}
+.row{display:flex;gap:12px;margin-top:16px;width:min(100%,560px)}
+button{font:inherit;font-weight:800;border-radius:14px;padding:16px;border:2px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer;flex:1;min-height:56px}
+button.go{background:var(--accent);color:#14213D;border-color:var(--accent)}
+button:disabled{opacity:.35;cursor:default}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.panel{width:min(100%,560px);margin-top:28px;border-top:1px solid var(--line);padding-top:16px}
+summary{cursor:pointer;font-weight:800}
+textarea{width:100%;min-height:150px;margin:12px 0;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font:.9rem/1.5 ui-monospace,Menlo,monospace}
+.panel p{color:var(--muted);font-size:.9rem;margin:8px 0}
+.panel .row{margin-top:0}
+.panel button{min-height:46px;padding:10px}
+.empty,.done{text-align:center}
+.empty .word,.done .word{font-size:1.8rem}
+</style>
+</head>
+<body>
+<h1>ASL flashcards</h1>
+<p class="stats" id="stats"></p>
+
+<div class="stage"><div class="card front" id="card" role="button" tabindex="0" aria-label="Flashcard. Press to flip."></div></div>
+
+<div class="row">
+  <button id="again" disabled>Still learning</button>
+  <button id="knew" class="go" disabled>Knew it</button>
+</div>
+
+<details class="panel" id="panel">
+  <summary>Your words and videos</summary>
+  <p>One card per line: word, YouTube link, start seconds, end seconds. Start and end are optional.</p>
+  <textarea id="src" spellcheck="false" placeholder="Mother, https://www.youtube.com/watch?v=VIDEO_ID, 12, 16&#10;Thank you, https://youtu.be/VIDEO_ID, 0, 4"></textarea>
+  <div class="row">
+    <button id="load" class="go">Load cards</button>
+    <button id="file">Import CSV</button>
+    <button id="reset">Start over</button>
+  </div>
+  <input type="file" id="csv" accept=".csv,.txt" hidden>
+</details>
+
+<script>
+const $ = id => document.getElementById(id);
+const card = $('card'), stats = $('stats');
+let deck = [], done = new Set(), queue = [], flipped = false, busy = false;
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const vid = u => (String(u).match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/) || [])[1];
+
+function save() {
+  try { localStorage.setItem('asl-deck', JSON.stringify(deck)); localStorage.setItem('asl-done', JSON.stringify([...done])); } catch (e) {}
+}
+function restore() {
+  try {
+    deck = JSON.parse(localStorage.getItem('asl-deck') || '[]');
+    done = new Set(JSON.parse(localStorage.getItem('asl-done') || '[]'));
+  } catch (e) { deck = []; done = new Set(); }
+}
+function parse(text) {
+  return text.split(/\r?\n/).map(line => {
+    const p = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+    const id = vid(p[1]);
+    return id ? { word: p[0], id, start: parseInt(p[2]) || 0, end: parseInt(p[3]) || 0, url: p[1] } : null;
+  }).filter(Boolean);
+}
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function buildQueue() { queue = shuffle(deck.map((_, i) => i).filter(i => !done.has(i))); flipped = false; }
+
+function embed(c) {
+  let q = `?autoplay=1&mute=1&loop=1&playlist=${c.id}&rel=0&playsinline=1`;
+  if (c.start) q += `&start=${c.start}`;
+  if (c.end) q += `&end=${c.end}`;
+  return `https://www.youtube.com/embed/${c.id}${q}`;
+}
+
+function draw() {
+  $('again').disabled = $('knew').disabled = !(queue.length && flipped);
+  stats.textContent = deck.length ? `${done.size} of ${deck.length} mastered` : '';
+  if (!deck.length) {
+    card.className = 'card front empty'; card.removeAttribute('tabindex');
+    card.innerHTML = '<div class="word">No cards yet</div><p class="hint">Open “Your words and videos” below and load your list.</p>';
+    return;
+  }
+  card.tabIndex = 0;
+  if (!queue.length) {
+    card.className = 'card front done';
+    card.innerHTML = '<div class="word">All done</div><p class="hint">Every card is mastered. Press “Start over” to practice again.</p>';
+    return;
+  }
+  const c = deck[queue[0]];
+  if (!flipped) {
+    card.className = 'card front';
+    card.innerHTML = `<div class="word">${esc(c.word)}</div><p class="hint">Tap the card to see the sign</p>`;
+  } else {
+    card.className = 'card back';
+    const w = `https://www.youtube.com/watch?v=${c.id}` + (c.start ? `&t=${c.start}s` : '');
+    card.innerHTML = `<p class="label">${esc(c.word)}</p><div id="vbox"><iframe class="video" src="${embed(c)}" referrerpolicy="strict-origin-when-cross-origin" title="Sign for ${esc(c.word)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div><a class="watch" href="${w}" target="_blank" rel="noopener">See the video</a>`;
+  }
+}
+
+function flip(e) {
+  if (busy || !queue.length || (e && e.target.closest && e.target.closest('a,iframe,button'))) return;
+  busy = true;
+  card.style.transform = 'rotateY(90deg)';
+  setTimeout(() => { flipped = !flipped; draw(); card.style.transform = 'rotateY(0deg)'; setTimeout(() => busy = false, 160); }, 160);
+}
+card.addEventListener('click', flip);
+card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+
+function next(knewIt) {
+  const i = queue.shift();
+  if (knewIt) done.add(i); else queue.push(i);
+  flipped = false; save(); draw();
+}
+$('knew').onclick = () => next(true);
+$('again').onclick = () => next(false);
+
+$('load').onclick = () => {
+  const cards = parse($('src').value);
+  if (!cards.length) { alert('No valid YouTube links found. Each line needs a word and a link.'); return; }
+  deck = cards; done = new Set(); buildQueue(); save(); draw();
+  $('panel').open = false;
+};
+$('reset').onclick = () => { done = new Set(); buildQueue(); save(); draw(); };
+$('file').onclick = () => $('csv').click();
+$('csv').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader(); r.onload = () => { $('src').value = r.result; $('load').click(); }; r.readAsText(f);
+};
+
+restore(); buildQueue();
+if (!deck.length) $('panel').open = true;
+else $('src').value = deck.map(c => [c.word, c.url, c.start || '', c.end || ''].join(', ').replace(/(, )+$/, '')).join('\n');
+draw();
+</script>
+</body>
+</html>
